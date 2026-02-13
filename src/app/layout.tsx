@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { I18nProvider } from "@/i18n/context";
+import Providers from "@/components/Providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <I18nProvider>{children}</I18nProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

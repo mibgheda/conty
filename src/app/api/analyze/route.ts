@@ -2,11 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { SYSTEM_PROMPT } from "@/lib/prompt-system";
 import { PROMPT_CATEGORIES, PromptBlock } from "@/lib/types";
+import { auth } from "@/lib/auth";
+import { canGenerate, recordGeneration } from "@/lib/usage";
+import { randomUUID } from "crypto";
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
+
+    let anonymousId = request.cookies.get("anon_id")?.value ?? null;
+    if (!userId && !anonymousId) {
+      anonymousId = randomUUID();
+    }
+
+    // Check usage limits
+    const allowed = await canGenerate(userId, anonymousId);
+    if (!allowed) {
+      const message = userId
+        ? "Daily limit reached. Purchase a generation pack for more."
+        : "Daily limit reached. Sign in for more free generations.";
+      const res = NextResponse.json(
+        { error: message, limitReached: true, isAuthenticated: !!userId },
+        { status: 429 }
+      );
+      if (!userId && anonymousId) {
+        res.cookies.set("anon_id", anonymousId, {
+          httpOnly: true,
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24,
+          path: "/",
+        });
+      }
+      return res;
+    }
+
     const formData = await request.formData();
     const file = formData.get("image") as File | null;
 
@@ -79,7 +111,22 @@ export async function POST(request: NextRequest) {
 
     const fullPrompt = blocks.map((b) => b.content).filter(Boolean).join(", ");
 
-    return NextResponse.json({ blocks, fullPrompt });
+    // Record successful generation
+    await recordGeneration(userId, anonymousId);
+
+    const res = NextResponse.json({ blocks, fullPrompt });
+
+    // Set anonymous ID cookie if needed
+    if (!userId && anonymousId) {
+      res.cookies.set("anon_id", anonymousId, {
+        httpOnly: true,
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24,
+        path: "/",
+      });
+    }
+
+    return res;
   } catch (error: unknown) {
     console.error("Analyze error:", error);
     const message =

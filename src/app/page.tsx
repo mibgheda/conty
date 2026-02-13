@@ -2,16 +2,19 @@
 
 import { useState, useCallback } from "react";
 import { useI18n } from "@/i18n/context";
+import { useSession } from "next-auth/react";
 import Header from "@/components/Header";
 import PhotoUpload from "@/components/PhotoUpload";
 import PromptResult from "@/components/PromptResult";
 import LoadingSpinner from "@/components/LoadingSpinner";
+import LimitBanner from "@/components/LimitBanner";
 import type { PromptBlock } from "@/lib/types";
 
-type AppState = "upload" | "loading" | "result" | "error";
+type AppState = "upload" | "loading" | "result" | "error" | "limit";
 
 export default function Home() {
   const { t } = useI18n();
+  const { data: session } = useSession();
   const [state, setState] = useState<AppState>("upload");
   const [blocks, setBlocks] = useState<PromptBlock[]>([]);
   const [fullPrompt, setFullPrompt] = useState("");
@@ -31,6 +34,11 @@ export default function Home() {
       });
 
       const data = await response.json();
+
+      if (response.status === 429 && data.limitReached) {
+        setState("limit");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data.error || "Analysis failed");
@@ -83,6 +91,14 @@ export default function Home() {
 
         {/* Loading */}
         {state === "loading" && <LoadingSpinner />}
+
+        {/* Limit reached */}
+        {state === "limit" && (
+          <LimitBanner
+            isAuthenticated={!!session?.user}
+            onReset={handleReset}
+          />
+        )}
 
         {/* Result */}
         {state === "result" && (
