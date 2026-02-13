@@ -40,6 +40,9 @@ yarn-error.log*
 docker-compose.prod.yml
 Caddyfile
 
+# marketing docs (internal)
+/docs/
+
 # vercel
 .vercel
 
