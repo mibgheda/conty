@@ -5,10 +5,11 @@ import { useI18n } from "@/i18n/context";
 import { useSession } from "next-auth/react";
 import Header from "@/components/Header";
 import PhotoUpload from "@/components/PhotoUpload";
+import GenerationSettings from "@/components/GenerationSettings";
 import PromptResult from "@/components/PromptResult";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import LimitBanner from "@/components/LimitBanner";
-import type { PromptBlock } from "@/lib/types";
+import type { PromptBlock, Platform, DetailLevel } from "@/lib/types";
 
 type AppState = "upload" | "loading" | "result" | "error" | "limit";
 
@@ -18,15 +19,21 @@ export default function Home() {
   const [state, setState] = useState<AppState>("upload");
   const [blocks, setBlocks] = useState<PromptBlock[]>([]);
   const [fullPrompt, setFullPrompt] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("");
   const [error, setError] = useState("");
+  const [platform, setPlatform] = useState<Platform>("universal");
+  const [detailLevel, setDetailLevel] = useState<DetailLevel>("detailed");
+  const [lastFile, setLastFile] = useState<File | null>(null);
 
-  const handleFileSelected = useCallback(async (file: File) => {
+  const doAnalyze = useCallback(async (file: File, plat: Platform, detail: DetailLevel) => {
     setState("loading");
     setError("");
 
     try {
       const formData = new FormData();
       formData.append("image", file);
+      formData.append("platform", plat);
+      formData.append("detailLevel", detail);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -46,6 +53,7 @@ export default function Home() {
 
       setBlocks(data.blocks);
       setFullPrompt(data.fullPrompt);
+      setNegativePrompt(data.negativePrompt || "");
       setState("result");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("errorGeneric"));
@@ -53,11 +61,37 @@ export default function Home() {
     }
   }, [t]);
 
+  const handleFileSelected = useCallback(async (file: File) => {
+    setLastFile(file);
+    doAnalyze(file, platform, detailLevel);
+  }, [platform, detailLevel, doAnalyze]);
+
+  const handleRegenerate = useCallback(() => {
+    if (lastFile) {
+      doAnalyze(lastFile, platform, detailLevel);
+    }
+  }, [lastFile, platform, detailLevel, doAnalyze]);
+
   const handleReset = useCallback(() => {
     setState("upload");
     setBlocks([]);
     setFullPrompt("");
+    setNegativePrompt("");
     setError("");
+    setLastFile(null);
+  }, []);
+
+  const handleBlockEdit = useCallback((blockId: string, newContent: string) => {
+    setBlocks((prev) => {
+      const updated = prev.map((b) =>
+        b.id === blockId ? { ...b, content: newContent } : b
+      );
+      const positive = updated.filter((b) => b.id !== "negative");
+      setFullPrompt(positive.map((b) => b.content).filter(Boolean).join(", "));
+      const neg = updated.find((b) => b.id === "negative");
+      if (neg) setNegativePrompt(neg.content);
+      return updated;
+    });
   }, []);
 
   return (
@@ -77,9 +111,15 @@ export default function Home() {
           </div>
         )}
 
-        {/* Upload */}
+        {/* Settings + Upload */}
         {(state === "upload" || state === "error") && (
           <>
+            <GenerationSettings
+              platform={platform}
+              detailLevel={detailLevel}
+              onPlatformChange={setPlatform}
+              onDetailLevelChange={setDetailLevel}
+            />
             <PhotoUpload onFileSelected={handleFileSelected} />
             {state === "error" && (
               <div className="mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm max-w-xl w-full text-center">
@@ -105,7 +145,14 @@ export default function Home() {
           <PromptResult
             blocks={blocks}
             fullPrompt={fullPrompt}
+            negativePrompt={negativePrompt}
+            platform={platform}
+            detailLevel={detailLevel}
+            onPlatformChange={setPlatform}
+            onDetailLevelChange={setDetailLevel}
+            onBlockEdit={handleBlockEdit}
             onReset={handleReset}
+            onRegenerate={handleRegenerate}
           />
         )}
       </main>

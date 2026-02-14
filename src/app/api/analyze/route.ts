@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
-import { SYSTEM_PROMPT } from "@/lib/prompt-system";
+import { buildSystemPrompt } from "@/lib/prompt-system";
 import { PROMPT_CATEGORIES, PromptBlock } from "@/lib/types";
+import type { Platform, DetailLevel } from "@/lib/types";
 import { auth } from "@/lib/auth";
 import { canGenerate, recordGeneration } from "@/lib/usage";
 import { randomUUID } from "crypto";
 
 export const maxDuration = 60;
+
+const VALID_PLATFORMS = new Set(["universal", "midjourney", "stable-diffusion", "dall-e", "flux"]);
+const VALID_DETAILS = new Set(["short", "detailed", "expert"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +45,15 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("image") as File | null;
+    const platformRaw = (formData.get("platform") as string) || "universal";
+    const detailRaw = (formData.get("detailLevel") as string) || "detailed";
+
+    const platform: Platform = VALID_PLATFORMS.has(platformRaw)
+      ? (platformRaw as Platform)
+      : "universal";
+    const detailLevel: DetailLevel = VALID_DETAILS.has(detailRaw)
+      ? (detailRaw as DetailLevel)
+      : "detailed";
 
     if (!file) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
@@ -67,12 +80,13 @@ export async function POST(request: NextRequest) {
     const dataUrl = `data:${file.type};base64,${base64}`;
 
     const openai = getOpenAIClient();
+    const systemPrompt = buildSystemPrompt(platform, detailLevel);
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      max_tokens: 2000,
+      max_tokens: detailLevel === "expert" ? 3000 : 2000,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         {
           role: "user",
           content: [
@@ -109,12 +123,21 @@ export async function POST(request: NextRequest) {
       content: parsed[cat.id] || "",
     }));
 
-    const fullPrompt = blocks.map((b) => b.content).filter(Boolean).join(", ");
+    // Build full prompt: positive blocks only (exclude negative)
+    const positiveBlocks = blocks.filter((b) => b.id !== "negative");
+    const fullPrompt = positiveBlocks.map((b) => b.content).filter(Boolean).join(", ");
+    const negativePrompt = parsed["negative"] || "";
 
     // Record successful generation
     await recordGeneration(userId, anonymousId);
 
-    const res = NextResponse.json({ blocks, fullPrompt });
+    const res = NextResponse.json({
+      blocks,
+      fullPrompt,
+      negativePrompt,
+      platform,
+      detailLevel,
+    });
 
     // Set anonymous ID cookie if needed
     if (!userId && anonymousId) {
