@@ -107,7 +107,7 @@ export async function recordGeneration(
       });
 
       const activePack = packs.find(
-        (p) => p.generationsUsed < p.generationsTotal
+        (p: { generationsUsed: number; generationsTotal: number }) => p.generationsUsed < p.generationsTotal
       );
 
       if (activePack) {
