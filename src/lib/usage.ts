@@ -28,7 +28,7 @@ export async function getUsageInfo(
       where: { userId },
     });
     const packRemaining = packs.reduce(
-      (sum, p) => sum + Math.max(0, p.generationsTotal - p.generationsUsed),
+      (sum: number, p) => sum + Math.max(0, p.generationsTotal - p.generationsUsed),
       0
     );
 
