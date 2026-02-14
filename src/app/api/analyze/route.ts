@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      max_tokens: detailLevel === "expert" ? 3000 : 2000,
+      max_tokens: detailLevel === "expert" ? 5000 : detailLevel === "detailed" ? 4000 : 2000,
       messages: [
         { role: "system", content: systemPrompt },
         {
