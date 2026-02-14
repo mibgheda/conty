@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import type { PurchasedPack } from "@prisma/client";
 
 const FREE_DAILY_LIMIT = 5;
 const AUTH_DAILY_LIMIT = 10;
@@ -29,7 +28,7 @@ export async function getUsageInfo(
       where: { userId },
     });
     const packRemaining = packs.reduce(
-      (sum: number, p: PurchasedPack) => sum + Math.max(0, p.generationsTotal - p.generationsUsed),
+      (sum: number, p: { generationsTotal: number; generationsUsed: number }) => sum + Math.max(0, p.generationsTotal - p.generationsUsed),
       0
     );
 
